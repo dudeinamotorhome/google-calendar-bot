@@ -39,7 +39,7 @@ exports.db_getUser = function (sender_id) {
     if(!error){
       // query 실행
       var collection = db.collection('user');
-     console.log("@@@@@@@converse_search_user@@@@@@@");
+     console.log("@@@@@@@@converse_search_user@@@@@@@");
      // console.log(collection.find({facebook_id : sender_id}));
     }
     else{
