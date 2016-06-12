@@ -1,4 +1,4 @@
-var MongoClient = require('mongodb').MongoClient;
+var MongoClient = require('../node_modules/mongodb').MongoClient;
 
 var db_port = 27017;
 var db_ip   = process.env.IP;
