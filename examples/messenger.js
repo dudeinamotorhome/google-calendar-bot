@@ -1,46 +1,74 @@
 'use strict';
 
-// Messenger API integration example
-// We assume you have:
-// * a Wit.ai bot setup (https://wit.ai/docs/quickstart)
-// * a Messenger Platform setup (https://developers.facebook.com/docs/messenger-platform/quickstart)
-// You need to `npm install` the following dependencies: body-parser, express, request.
-//
-// 1. npm install body-parser express request 
-// 2. Download and install ngrok from https://ngrok.com/download
-// 3. ./ngrok http 8445
-// 4. WIT_TOKEN=your_access_token FB_PAGE_ID=your_page_id FB_PAGE_TOKEN=your_page_token FB_VERIFY_TOKEN=verify_token node examples/messenger.js
-// 5. Subscribe your page to the Webhooks using verify_token and `https://<your_ngrok_io>/fb` as callback URL.
-// 6. Talk to your bot on Messenger!
+var bodyParser = require('body-parser');
+var express = require('express');
+var request = require('request');
+var Wit = require('../').Wit;
+var fs = require('fs');
+var readline = require('readline');
+var google = require('googleapis');
+var googleAuth = require('google-auth-library');
+var date = require('date-utils');
+var db = require('./mongodb.js');
 
-const bodyParser = require('body-parser');
-const express = require('express');
-const request = require('request');
 
-// When not cloning the `node-wit` repo, replace the `require` like so:
-// const Wit = require('node-wit').Wit;
-const Wit = require('../').Wit;
+// global variables
+var sender;
+var verify = 0;
+var verify_sender;
+var verify_timer;
+var SCOPES = ['https://www.googleapis.com/auth/calendar'];
+var TOKEN_DIR = (process.env.HOME || 
+                  process.env.HOMEPATH || 
+                  process.env.USERPROFILE) + '/.credentials';
+var TOKEN_PATH;
+var oauth2Client;
 
-// Webserver parameter
-const PORT = process.env.PORT || 8445;
 
-// Wit.ai parameters
-const WIT_TOKEN = process.env.WIT_TOKEN;
+// command code
+const GOOGLE_SHOW = 0;
+const GOOGLE_INSERT = 1;
+const GOOGLE_DELETE = 2;
 
-// Messenger API parameters
-const FB_PAGE_ID = process.env.FB_PAGE_ID;
-if (!FB_PAGE_ID) {
-  throw new Error('missing FB_PAGE_ID');
-}
-const FB_PAGE_TOKEN = process.env.FB_PAGE_TOKEN;
-if (!FB_PAGE_TOKEN) {
-  throw new Error('missing FB_PAGE_TOKEN');
-}
-const FB_VERIFY_TOKEN = process.env.FB_VERIFY_TOKEN;
 
-// Messenger API specific code
+// environment variables
+const PORT = process.env.PORT || 8445;                      // Webserver parameter
+const WIT_TOKEN = 'FF3ZR7ZPW3OAOMFPKHN4ANI4DJFCGW3U';       // Wit.ai parameters
+const FB_PAGE_ID = '237759059939761';                       // Messenger API parameters
+if (!FB_PAGE_ID) { throw new Error('missing FB_PAGE_ID'); }
+const FB_PAGE_TOKEN =                                       // Facebook Page token
+  'EAADqStRbwScBAI1KKOR1HwB9vpBG41WUMX' +
+  'iKKo5OySlknWIi5WhErbR4gI4zvwQTb2STA' +
+  'Q0JqoWeFfEDvvL67eYEZCRI24bL9vfwOS4w' +
+  'QJty5O95VSiFjL1yRrtcTgULH4PxJI93Lej' +
+  'D1pZBHsuWqqcdibmpldmZBZCu4oZAz8wZDZD';
+if (!FB_PAGE_TOKEN) { throw new Error('missing FB_PAGE_TOKEN'); }
+const FB_VERIFY_TOKEN = 'ajou_project';                     // Facebook Verify token
 
-// See the Send API reference
+
+
+// Starting our webserver and putting it all together
+const app = express();
+app.set('port', PORT);
+app.listen(app.get('port'));
+app.use(bodyParser.json());
+
+
+
+
+
+
+
+/*************************************************************
+ * 
+ * 
+ * 
+ *                        API specific code
+ * 
+ *
+ * 
+ */
+// Send API
 // https://developers.facebook.com/docs/messenger-platform/send-api-reference
 const fbReq = request.defaults({
   uri: 'https://graph.facebook.com/me/messages',
@@ -68,6 +96,7 @@ const fbMessage = (recipientId, msg, cb) => {
   });
 };
 
+
 // See the Webhook reference
 // https://developers.facebook.com/docs/messenger-platform/webhook-reference
 const getFirstMessagingEntry = (body) => {
@@ -85,76 +114,49 @@ const getFirstMessagingEntry = (body) => {
   return val || null;
 };
 
+
 // Wit.ai bot specific code
+const actions = {       // Our bot actions
+  say,
+  merge,
+  error,
+  converse_search_user,
+  google_show,
+  google_insert
+};
 
-// This will contain all user sessions.
-// Each session has an entry:
-// sessionId -> {fbid: facebookUserId, context: sessionState}
-const sessions = {};
 
+const wit = new Wit(WIT_TOKEN, actions);  // Setting up our bot
+
+
+const sessions = {};    // This will contain all user sessions.
+                        // sessionId -> {fbid: facebookUserId, context: sessionState}
+                        // Each session has an entry:
 const findOrCreateSession = (fbid) => {
   let sessionId;
-  // Let's see if we already have a session for the user fbid
   Object.keys(sessions).forEach(k => {
     if (sessions[k].fbid === fbid) {
-      // Yep, got it!
       sessionId = k;
     }
   });
   if (!sessionId) {
-    // No session found for user fbid, let's create a new one
     sessionId = new Date().toISOString();
     sessions[sessionId] = {fbid: fbid, context: {}};
   }
   return sessionId;
 };
 
-// Our bot actions
-const actions = {
-  say(sessionId, context, message, cb) {
-    // Our bot has something to say!
-    // Let's retrieve the Facebook user whose session belongs to
-    const recipientId = sessions[sessionId].fbid;
-    if (recipientId) {
-      // Yay, we found our recipient!
-      // Let's forward our bot response to her.
-      fbMessage(recipientId, message, (err, data) => {
-        if (err) {
-          console.log(
-            'Oops! An error occurred while forwarding the response to',
-            recipientId,
-            ':',
-            err
-          );
-        }
-
-        // Let's give the wheel back to our bot
-        cb();
-      });
-    } else {
-      console.log('Oops! Couldn\'t find user for session:', sessionId);
-      // Giving the wheel back to our bot
-      cb();
-    }
-  },
-  merge(sessionId, context, entities, message, cb) {
-    cb(context);
-  },
-  error(sessionId, context, error) {
-    console.log(error.message);
-  },
-  // You should implement your custom actions here
-  // See https://wit.ai/docs/quickstart
+const firstEntityValue = (entities, entity) => {
+  const val = entities && entities[entity] &&
+    Array.isArray(entities[entity]) &&
+    entities[entity].length > 0 &&
+    entities[entity][0].value;
+  if (!val) {
+    return null;
+  }
+  return typeof val === 'object' ? val.value : val;
 };
 
-// Setting up our bot
-const wit = new Wit(WIT_TOKEN, actions);
-
-// Starting our webserver and putting it all together
-const app = express();
-app.set('port', PORT);
-app.listen(app.get('port'));
-app.use(bodyParser.json());
 
 // Webhook setup
 app.get('/fb', (req, res) => {
@@ -169,47 +171,56 @@ app.get('/fb', (req, res) => {
   }
 });
 
+
+// Image URL to show calendar image
+app.get('/image/googlecalendar', function (req, res) {
+  var img = fs.readFileSync('/home/ubuntu/workspace/node-wit/img/googlecalendar.jpg');
+  res.writeHead(200, {'Content-Type': 'image/jpg' });
+  res.end(img, 'binary');
+});
+
+
 // Message handler
 app.post('/fb', (req, res) => {
-  // Parsing the Messenger API response
   const messaging = getFirstMessagingEntry(req.body);
   if (messaging && messaging.message && messaging.recipient.id === FB_PAGE_ID) {
-    // Yay! We got a new message!
 
-    // We retrieve the Facebook user ID of the sender
     const sender = messaging.sender.id;
-
-    // We retrieve the user's current session, or create one if it doesn't exist
-    // This is needed for our bot to figure out the conversation history
     const sessionId = findOrCreateSession(sender);
-
-    // We retrieve the message content
     const msg = messaging.message.text;
     const atts = messaging.message.attachments;
 
+    if(verify == 1 && verify_sender == sender) {
+      oauth2Client.getToken(msg, function(err, token) {
+        if (err) {
+          console.log('Error while trying to retrieve access token', err);
+          fbMessage(sender, "Your access key is not valid.");
+          if(verify==3){
+            verify = 0;
+            clearTimeout(verify_timer);
+            fbMessage(sender, "Fail to User authentication.");
+          } else {
+            verify++;
+            fbMessage(sender, "Your chance remain " + (4-verify) +".");
+          }
+          return;
+        }
+        oauth2Client.credentials = token;
+        storeToken(sender, token);
+      });
+    }
+  
     if (atts) {
-      // We received an attachment
-
-      // Let's reply with an automatic message
-      fbMessage(
-        sender,
-        'Sorry I can only process text messages for now.'
-      );
+      fbMessage(sender, 'Sorry I can only process text messages for now.');
     } else if (msg) {
-      // We received a text message
-
-      // Let's forward the message to the Wit.ai Bot Engine
-      // This will run all actions until our bot has nothing left to do
       wit.runActions(
-        sessionId, // the user's current session
-        msg, // the user's message 
-        sessions[sessionId].context, // the user's current session state
+        sessionId,                    // the user's current session
+        msg,                          // the user's message 
+        sessions[sessionId].context,  // the user's current session state
         (error, context) => {
           if (error) {
             console.log('Oops! Got an error from Wit:', error);
           } else {
-            // Our bot did everything it has to do.
-            // Now it's waiting for further messages to proceed.
             console.log('Waiting for futher messages.');
 
             // Based on the session state, you might want to reset the session.
@@ -219,7 +230,6 @@ app.post('/fb', (req, res) => {
             //   delete sessions[sessionId];
             // }
 
-            // Updating the user's current session state
             sessions[sessionId].context = context;
           }
         }
@@ -229,3 +239,288 @@ app.post('/fb', (req, res) => {
   res.sendStatus(200);
 });
 
+
+
+
+
+
+
+
+
+/*************************************************************
+ * 
+ * 
+ * 
+ *                        functions
+ * 
+ *
+ * 
+ */
+
+
+function getNewToken(sender, oauth2Client) {
+  var authUrl = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: SCOPES
+  });
+  post_access_url(sender, authUrl);
+  verify = 1;
+  verify_sender = sender; 
+  verify_timer = setTimeout(function() {
+      fbMessage(sender, "Access Key Timeout. Try again.");
+      verify = 0;
+      verify_sender = 0;
+    },
+    20*1000);
+}
+
+
+function storeToken(sender, token) {
+  fs.mkdir(TOKEN_DIR + '/' + verify_sender, function(err) {
+    if(err) throw err;
+  });
+  TOKEN_PATH = TOKEN_DIR + '/' + verify_sender + '/calendar-nodejs-quickstart.json';
+  try {
+    fs.mkdirSync(TOKEN_DIR);
+  } catch (err) {
+    if (err.code != 'EEXIST') {
+      throw err;
+    }
+  }
+  
+  fs.writeFile(TOKEN_PATH, JSON.stringify(token));
+  db.db_addCredential(sender);
+  db.db_addUser(sender);
+  
+  clearTimeout(verify_timer);
+  fbMessage(verify_sender, 'Now we can access your calendar!\n' + 
+                          'What should i do for you?');
+  verify = 0;
+  verify_sender = 0;
+}
+
+
+function post_access_url(sender, url) {
+  var messageData = {
+    "attachment": {
+      "type": "template",
+      "payload": {
+        "template_type": "generic",
+        "elements": [{
+          "title": "Google Calendar",
+          "subtitle": "Please enter your access key.",
+          "image_url": "https://db-project-bot-bee0005.c9users.io/image/googlecalendar",
+          "buttons": [{
+            "type": "web_url",
+            "url": url,
+            "title": "Access Key"
+          }],
+        }]
+      }
+    }
+  };
+  request({
+    url: 'https://graph.facebook.com/v2.6/me/messages',
+    qs: {access_token: FB_PAGE_TOKEN },
+    method: 'POST',
+    json: {
+      recipient: {id:sender},
+      message: messageData,
+    }
+  }, function(error, response, body) {
+    if (error) {
+      console.log('Error sending message: ', error);
+    } else if (response.body.error) {
+      console.log('Error: ', response.body.error);
+    }
+  });
+}
+
+
+function say(sessionId, context, message, cb) {
+  const recipientId = sessions[sessionId].fbid;
+  if (recipientId) {
+   // fbMessage(recipientId, "Sorry. I can't understand your sentence.. :(", (err, data) => {
+    fbMessage(recipientId, message, (err, data) => {
+      if (err) {
+        console.log(recipientId, ':', err);
+      }
+      cb(); // Let's give the wheel back to our bot
+    });
+  } else {
+    cb(); // Giving the wheel back to our bot
+  }
+}
+
+function merge(sessionId, context, entities, message, cb) {
+  
+  if(firstEntityValue(entities, "datetime")) {
+    context.datetime = firstEntityValue(entities, "datetime");
+  }
+  if(firstEntityValue(entities, "from") && firstEntityValue(entities, "to")) {
+    context.datetime = [
+      firstEntityValue(entities, "from"), 
+      firstEntityValue(entities, "to")
+      ];
+  }
+  if(firstEntityValue(entities, "message_subject")) {
+    context.message_subject = firstEntityValue(entities, "message_subject");
+  }
+  
+  cb(context);
+}
+
+
+function error(sessionId, context, error) {
+  console.log(error.message);
+}
+
+
+function converse_search_user(sessionId, context, cb) {
+  // 여기서 유저 정보 디비에서 가져와서
+  db.db_getUser(sender);
+  // fbMessage로 몇 번째 방문인지 보여줌
+}
+
+
+function google_show(sessionId, context, cb) {
+  const recipientId = sessions[sessionId].fbid;
+  sender = recipientId;
+  if (recipientId) {
+    fs.readFile(process.env.HOME + '/workspace/node-wit/' + 'client_secret.json', function processClientSecrets(err, content) {
+      if (err) {
+        console.log('Error loading client secret file: ' + err);
+        return;
+      }
+      authorize(sessionId, context, cb, JSON.parse(content), GOOGLE_SHOW);
+    });
+  }
+  cb();
+}
+
+function google_insert(sessionId, context, cb) {
+  const recipientId = sessions[sessionId].fbid;
+  sender = recipientId;
+  if (recipientId) {
+    fs.readFile(process.env.HOME + '/workspace/node-wit/' + 'client_secret.json', function processClientSecrets(err, content) {
+      if (err) {
+        console.log('Error loading client secret file: ' + err);
+        return;
+      }
+      authorize(sessionId, context, cb, JSON.parse(content), GOOGLE_SHOW);
+    });
+  }
+  cb();
+}
+
+
+function authorize(sessionId, context, cb, credentials, command) {
+  const clientSecret = credentials.installed.client_secret;
+  const clientId = credentials.installed.client_id;
+  const redirectUrl = credentials.installed.redirect_uris[0];
+  const auth = new googleAuth();
+  const sender = sessions[sessionId].fbid;
+
+  oauth2Client = new auth.OAuth2(clientId, clientSecret, redirectUrl);
+  TOKEN_PATH = TOKEN_DIR + '/' + sender + '/calendar-nodejs-quickstart.json';
+  fs.readFile(TOKEN_PATH, function(err, token) {
+    if (err) {
+      if(verify != 0) {
+        fbMessage(sender,  "We need authorized your key, " + 
+                            "but other user Registering now.\n" +
+                            "Please try after a minute again.");
+        return;
+      }
+      getNewToken(sender, oauth2Client);
+      return;
+    }
+    oauth2Client.credentials = JSON.parse(token);
+    
+    switch (command) {
+      case GOOGLE_SHOW:
+        show(oauth2Client, context, cb);
+        break;
+      case GOOGLE_INSERT:
+        insert(oauth2Client, context, cb);
+        break;
+      default:
+        break;
+    }
+  });
+}
+
+
+function show(auth, context, cb){
+  var calendar = google.calendar('v3');
+  calendar.events.list({
+    auth: auth,
+    calendarId: 'primary',
+    timeMin: (Array.isArray(context.datetime) ? context.datetime[0] : context.datetime),
+    timeMax: (Array.isArray(context.datetime) ? context.datetime[1] : new Date(context.datetime).addDays(1).toISOString()),
+    maxResults: 10,
+    singleEvents: true,
+    orderBy: 'startTime'
+  }, function(err, response) {
+    if (err) {
+      console.log('The API returned an error: ' + err);
+      fbMessage(sender, 'Sorry, we got an error... :(');
+      return;
+    }
+    var events = response.items;
+    if (events.length == 0) {
+      fbMessage(sender,  'No upcoming events found.');
+    } else {
+      console.log('Upcoming 10 events : ');
+    
+      var result_event ="";
+      result_event += 'Upcoming ' + 10 +' events : \n\n';
+      for (var i = 0; i < events.length; i++) {
+        var event = events[i];
+        var start = event.start.dateTime || event.start.date;
+        console.log('%s - %s', start, event.summary);
+      
+        if((result_event + start + "  -  " +  event.summary +"\n").length > 320) {
+          fbMessage(sender,  result_event);
+          result_event = "";
+        }
+        result_event += start + "  -  " + event.summary + "\n";
+      }
+      
+      if(result_event.length > 0) 
+        fbMessage(sender,  result_event);
+    }
+    cb();
+  });
+}
+
+
+function insert(auth, context, cb){
+  var event = {
+    'summary': context.message_subject,
+    'location': '',
+    'description': '',
+    'start': {
+      'dateTime': context.datetime,
+      'timeZone': 'America/Los_Angeles',
+    },
+    'end': {
+      'dateTime': new Date(context.datetime).addDays(1).toISOString(),
+      'timeZone': 'America/Los_Angeles',
+    },
+  };
+  var calendar = google.calendar('v3');
+  calendar.events.insert({
+    auth: auth,
+    calendarId: 'primary',
+    resource: event,
+  }, function(err, event) {
+    if (err) {
+      console.log('There was an error contacting the Calendar service: ' + err);
+      fbMessage(sender, 'Sorry, we got an error... :(');
+      return;
+    }
+    console.log('Event created: %s', event.htmlLink);
+    fbMessage(sender,  "insert schedule success");
+  });
+  cb();
+}

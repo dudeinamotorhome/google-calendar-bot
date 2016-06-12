@@ -18,6 +18,8 @@
   "repository": "https://github.com/wit-ai/node-wit",
   "author": "Julien Odent <julien@wit.ai>",
   "dependencies": {
+    "google-auth-library": "^0.9.8",
+    "googleapis": "^7.1.0",
     "node-fetch": "^1.5.1",
     "node-uuid": "^1.4.7"
   }
