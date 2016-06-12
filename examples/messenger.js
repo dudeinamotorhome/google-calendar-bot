@@ -1,14 +1,14 @@
 'use strict';
 
-var bodyParser = require('/node_modules/body-parser');
-var express = require('express');
-var request = require('request');
+var bodyParser = require('../node_modules/body-parser');
+var express = require('../node_modules/express');
+var request = require('../node_modules/request');
 var Wit = require('../').Wit;
-var fs = require('fs');
-var readline = require('readline');
-var google = require('googleapis');
-var googleAuth = require('google-auth-library');
-var date = require('date-utils');
+var fs = require('fs'); 
+var readline = require('../node_modules/readline'); 
+var google = require('../node_modules/googleapis'); 
+var googleAuth = require('../node_modules/google-auth-library'); 
+var date = require('../node_modules/date-utils'); 
 var db = require('./mongodb.js');
 
 
@@ -451,6 +451,11 @@ function authorize(sessionId, context, cb, credentials, command) {
 
 
 function show(auth, context, cb){
+  if(!context.datetime){
+    fbMessage(sender, "I can't not read your schedule date :(.\n\n" +
+                      "Please input correct date format." );
+    return;
+  }
   //console.log(context.datetime);
   //console.log(new Date(context.datetime).addHours(24).toISOString());
  
