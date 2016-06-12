@@ -198,7 +198,7 @@ app.post('/fb', (req, res) => {
           if(verify==3){
             verify = 0;
             clearTimeout(verify_timer);
-            fbMessage(sender, "Fail to User authentication.");
+            fbMessage(sender, "Fail zzzto User authentication.");
           } else {
             verify++;
             fbMessage(sender, "Your chance remain " + (4-verify) +".");
