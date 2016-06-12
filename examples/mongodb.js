@@ -39,9 +39,11 @@ exports.db_getUser = function (sender_id) {
     if(!error){
       // query 실행
       var collection = db.collection('user');
-      console.dir(collection.find({facebook_id : sender_id}));
+     console.log("@@@@@@@converse_search_user@@@@@@@");
+     // console.log(collection.find({facebook_id : sender_id}));
     }
     else{
+     console.log("#################");
       console.dir(error); //failed to connect to [127.4.68.129:8080]
     }
     return null;

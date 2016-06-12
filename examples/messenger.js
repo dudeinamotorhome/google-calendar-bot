@@ -267,7 +267,7 @@ function getNewToken(sender, oauth2Client) {
   verify = 1;
   verify_sender = sender; 
   verify_timer = setTimeout(function() {
-      fbMessage(sender, "Access Key Timeout. Try again.");
+      fbMessage(sender, "Access Key Timeout. Try again :'(.");
       verify = 0;
       verify_sender = 0;
     },
@@ -294,7 +294,7 @@ function storeToken(sender, token) {
   
   clearTimeout(verify_timer);
   fbMessage(verify_sender, 'Now we can access your calendar!\n' + 
-                          'What should i do for you?');
+                          'What should i do for you :D?');
   verify = 0;
   verify_sender = 0;
 }
@@ -407,7 +407,7 @@ function google_insert(sessionId, context, cb) {
         console.log('Error loading client secret file: ' + err);
         return;
       }
-      authorize(sessionId, context, cb, JSON.parse(content), GOOGLE_SHOW);
+      authorize(sessionId, context, cb, JSON.parse(content), GOOGLE_INSERT);
     });
   }
   cb();
@@ -428,7 +428,7 @@ function authorize(sessionId, context, cb, credentials, command) {
       if(verify != 0) {
         fbMessage(sender,  "We need authorized your key, " + 
                             "but other user Registering now.\n" +
-                            "Please try after a minute again.");
+                            "Please try after a minute again :'(.");
         return;
       }
       getNewToken(sender, oauth2Client);
@@ -451,12 +451,17 @@ function authorize(sessionId, context, cb, credentials, command) {
 
 
 function show(auth, context, cb){
+  //console.log(context.datetime);
+  //console.log(new Date(context.datetime).addHours(24).toISOString());
+ 
   var calendar = google.calendar('v3');
   calendar.events.list({
     auth: auth,
     calendarId: 'primary',
-    timeMin: (Array.isArray(context.datetime) ? context.datetime[0] : context.datetime),
-    timeMax: (Array.isArray(context.datetime) ? context.datetime[1] : new Date(context.datetime).addDays(1).toISOString()),
+    timeMin: (Array.isArray(context.datetime) ? new Date(context.datetime[0]).addDays(1).toISOString() :  context.datetime),
+    timeMax: (Array.isArray(context.datetime) ? new Date(context.datetime[1]).addDays(1).toISOString() : new Date(context.datetime).addHours(24).toISOString()),
+    //timeMin: (Array.isArray(context.datetime) ? context.datetime[0] : context.datetime),
+    //timeMax: (Array.isArray(context.datetime) ? context.datetime[1] : new Date(context.datetime).addDays(1).toISOString()),
     maxResults: 10,
     singleEvents: true,
     orderBy: 'startTime'
@@ -495,16 +500,23 @@ function show(auth, context, cb){
 
 
 function insert(auth, context, cb){
+  if(!context.message_subject){
+    fbMessage(sender, "I can't not read your schedule title :(.\n\n" +
+                      "Please input your schedule title 'schedule title' format." );
+    return;
+  }
   var event = {
     'summary': context.message_subject,
     'location': '',
     'description': '',
     'start': {
-      'dateTime': context.datetime,
+      'dateTime': (Array.isArray(context.datetime) ? new Date(context.datetime[0]).addDays(1).toISOString() :  context.datetime),
+      //'dateTime': context.datetime,
       'timeZone': 'America/Los_Angeles',
     },
     'end': {
-      'dateTime': new Date(context.datetime).addDays(1).toISOString(),
+      'dateTime': (Array.isArray(context.datetime) ? new Date(context.datetime[1]).addDays(1).toISOString() : new Date(context.datetime).addHours(24).toISOString()),
+      //'dateTime': new Date(context.datetime).addDays(1).toISOString(),
       'timeZone': 'America/Los_Angeles',
     },
   };
@@ -520,7 +532,7 @@ function insert(auth, context, cb){
       return;
     }
     console.log('Event created: %s', event.htmlLink);
-    fbMessage(sender,  "insert schedule success");
+    fbMessage(sender, "['" + context.message_subject+ "'" + " at " + context.datetime + "] insert success (y).");
   });
   cb();
 }
