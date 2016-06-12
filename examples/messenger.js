@@ -1,6 +1,6 @@
 'use strict';
 
-var bodyParser = require('body-parser');
+var bodyParser = require('/node_modules/body-parser');
 var express = require('express');
 var request = require('request');
 var Wit = require('../').Wit;
