@@ -1,6 +1,6 @@
-node_modules
-data
-img
+node_modules/*
+data/*
+img/*
 client_secret.json
-mongodb
+mongodb/*
 ngrok
