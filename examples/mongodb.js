@@ -34,17 +34,16 @@ exports.db_addUser = function (sender_id) {
   });
 };
 
-exports.db_getUser = function (sender_id) {
+exports.db_getUserVisit = function (sender_id) {
   MongoClient.connect("mongodb://"+db_ip+":"+db_port+"/ROOT", function(error, db) {
     if(!error){
       // query 실행
-      var collection = db.collection('user');
-     console.log("@@@@@@@@converse_search_user@@@@@@@");
+      var user = db.collection('user').find({facebook_id : sender_id});
      // console.log(collection.find({facebook_id : sender_id}));
+     return user.visitCount;
     }
     else{
-     console.log("#################");
-      console.dir(error); //failed to connect to [127.4.68.129:8080]
+      console.dir(error); //failed to connect
     }
     return null;
   });
